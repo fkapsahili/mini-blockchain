@@ -1,9 +1,11 @@
-package node
+package main
 
 import (
 	"flag"
 	"fmt"
 	"os"
+
+	"github.com/fkapsahili/mini-blockchain/internal/blockchain"
 )
 
 var (
@@ -55,9 +57,12 @@ func printUsage() {
 }
 
 func handleStart() {
-	fmt.Println("Starting blockchain node...")
-	fmt.Printf("Data directory: %s\n", dataDir)
-	fmt.Printf("Port: %d\n", port)
+	chain, err := blockchain.NewChain(dataDir)
+	if err != nil {
+		fmt.Printf("Failed to initialize blockchain: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Blockchain initialized at height %d\n", chain.GetHeight())
 }
 
 func handleCreateBlock() {
