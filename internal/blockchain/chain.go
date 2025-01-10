@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/fkapsahili/mini-blockchain/internal/crypto"
 	"github.com/fkapsahili/mini-blockchain/internal/storage"
 	"github.com/fkapsahili/mini-blockchain/internal/types"
 )
@@ -88,48 +89,78 @@ func (c *Chain) ValidateBlock(block *types.Block) error {
 		return errors.New("block cannot be nil")
 	}
 
-	if c.currentHeight == 0 {
-		if block.Height != 0 {
-			return errors.New("first block must be genesis with height 0")
+	if c.currentHeight == 0 && block.Height == 0 {
+		// First block must be genesis
+		if block.Header.PrevBlockHash != [32]byte{} {
+			return errors.New("genesis block must have zero previous hash")
 		}
 		return nil
-	} else {
+	}
 
-		prevBlock, err := c.store.GetBlock(c.currentHeight)
-		if err != nil {
-			return fmt.Errorf("failed to get previous block: %w", err)
-		}
+	prevBlock, err := c.store.GetBlock(c.currentHeight)
+	if err != nil {
+		return fmt.Errorf("failed to get previous block: %w", err)
+	}
 
-		// Check height
-		if block.Height != prevBlock.Height+1 {
-			return errors.New("invalid block height")
-		}
+	// Check height
+	if block.Height != prevBlock.Height+1 {
+		return errors.New("invalid block height")
+	}
 
-		// Check previous hash
-		if block.Header.PrevBlockHash != prevBlock.Hash {
-			return errors.New("invalid previous block hash")
+	// Check previous hash
+	if block.Header.PrevBlockHash != prevBlock.Hash {
+		return errors.New("invalid previous block hash")
 
-		}
 	}
 
 	// Verify Merkle root
-	expectedRoot := block.ComputeMerkleRoot()
+	expectedRoot := crypto.CalculateMerkleRoot(getTransactionHashes(block.Transactions))
 	if block.Header.MerkleRoot != expectedRoot {
-		return errors.New("invalid merke root")
+		return errors.New("invalid merkle root")
 	}
 
 	// Verify block hash
-	expectedHash := block.ComputeHash()
+	expectedHash := crypto.Hash(block.GetHeaderBytes())
 	if block.Hash != expectedHash {
 		return errors.New("invalid block hash")
 	}
 
-	// Check proof of work
-	// We check if the first byte of the hash is less than the difficulty
-	if block.Hash[0] > byte(block.Header.Difficulty) {
-		return errors.New("block hash doesn't meet difficulty requirements")
+	if !crypto.CheckProofOfWork(block.Hash, block.Header.Difficulty) {
+		return errors.New("proof of work verification failed")
 	}
 
+	for _, tx := range block.Transactions {
+		if err := validateTransaction(&tx); err != nil {
+			return fmt.Errorf("invalid transaction: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Helper function to get transaction hashes
+func getTransactionHashes(txs []types.Transaction) [][32]byte {
+	hashes := make([][32]byte, len(txs))
+	for i, tx := range txs {
+		hashes[i] = tx.Hash
+	}
+	return hashes
+}
+
+// validateTransaction verifies a single transaction
+func validateTransaction(tx *types.Transaction) error {
+	// Verify each input
+	for _, input := range tx.Inputs {
+		pubKey, err := crypto.BytesToPublicKey(input.PublicKey)
+		if err != nil {
+			return fmt.Errorf("invalid public key in transaction: %w", err)
+		}
+
+		// Verify signature
+		if !crypto.Verify(pubKey, tx.Hash[:], input.Signature) {
+			return errors.New("invalid transaction signature")
+		}
+	}
 	return nil
 }
 

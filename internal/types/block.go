@@ -28,7 +28,7 @@ type Block struct {
 }
 
 // getHeaderBytes serializes block header fields in bytes for hashing
-func (b *Block) getHeaderBytes() []byte {
+func (b *Block) GetHeaderBytes() []byte {
 	buf := new(bytes.Buffer)
 
 	// Write all header fields in order
@@ -44,7 +44,7 @@ func (b *Block) getHeaderBytes() []byte {
 
 // ComputeHash calculates the hash of the block
 func (b *Block) ComputeHash() [32]byte {
-	headerBytes := b.getHeaderBytes()
+	headerBytes := b.GetHeaderBytes()
 	return crypto.Hash(headerBytes)
 }
 

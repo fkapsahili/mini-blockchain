@@ -6,6 +6,8 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"fmt"
+	"math/big"
 )
 
 // Hash performs a double SHA256 hash of the input data
@@ -104,4 +106,29 @@ func GenerateProofOfWork(data []byte, difficulty uint32) (uint32, [32]byte) {
 
 		nonce++
 	}
+}
+
+// BytesToPublicKey converts a byte slice to an ECDSA public key
+func BytesToPublicKey(pub []byte) (*ecdsa.PublicKey, error) {
+	curve := ecdh.P256()
+	ecdhPub, err := curve.NewPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("invalid public key bytes: %w", err)
+	}
+
+	// Get raw bytes
+	rawBytes := ecdhPub.Bytes()
+
+	if len(rawBytes) != 65 || rawBytes[0] != 0x04 {
+		return nil, fmt.Errorf("invalid public key format")
+	}
+
+	x := new(big.Int).SetBytes(rawBytes[1:33])
+	y := new(big.Int).SetBytes(rawBytes[33:65])
+
+	return &ecdsa.PublicKey{
+		Curve: elliptic.P256(),
+		X:     x,
+		Y:     y,
+	}, nil
 }
