@@ -4,13 +4,17 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/fkapsahili/mini-blockchain/internal/blockchain"
+	"github.com/fkapsahili/mini-blockchain/internal/types"
 )
 
 var (
 	dataDir string
 	port    uint
+	chain   *blockchain.Chain
 )
 
 func main() {
@@ -57,27 +61,101 @@ func printUsage() {
 }
 
 func handleStart() {
+	var err error
 	chain, err := blockchain.NewChain(dataDir)
 	if err != nil {
 		fmt.Printf("Failed to initialize blockchain: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("Blockchain initialized at height %d\n", chain.GetHeight())
+
+	fmt.Println("Node is running. Press Ctrl+C to stop.")
+	select {} // Keep running for now
 }
 
 func handleCreateBlock() {
-	fmt.Println("Creating new block...")
+	if chain == nil {
+		fmt.Println("Blockchain not initialized. Please start the node first.")
+		return
+	}
+
+	latestBlock, err := chain.GetLatestBlock()
+	if err != nil {
+		fmt.Printf("Failed to get latest block: %v\n", err)
+		return
+	}
+
+	newBlock := &types.Block{
+		Header: types.BlockHeader{
+			Version:       1,
+			PrevBlockHash: latestBlock.Hash,
+			Timestamp:     time.Now(),
+			Difficulty:    1, // Simple difficulty for now
+			Nonce:         0, // Should be calculated with proper PoW
+		},
+		Transactions: []types.Transaction{}, // Empty transactions for now
+		Height:       latestBlock.Height + 1,
+	}
+
+	// TODO: Calculate proper hash
+	// For now, just use a dummy hash
+	newBlock.Hash = [32]byte{} // This should be properly calculated
+
+	if err := chain.AddBlock(newBlock); err != nil {
+		fmt.Printf("Failed to add block: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Created new block at height %d\n", newBlock.Height)
 }
 
 func handleStatus() {
-	fmt.Println("Blockchain status:")
+	if chain == nil {
+		fmt.Println("Blockchain not initialized. Please start the node first.")
+		return
+	}
+
+	height := chain.GetHeight()
+	latestBlock, err := chain.GetLatestBlock()
+	if err != nil {
+		fmt.Printf("Failed to get latest block: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Current Height: %d\n", height)
+	fmt.Printf("Latest Block Hash: %x\n", latestBlock.Hash)
+	fmt.Printf("Latest Block Time: %v\n", latestBlock.Header.Timestamp)
+	fmt.Printf("Number of Transactions: %d\n", len(latestBlock.Transactions))
 }
 
 func handleBlock(cmd *flag.FlagSet) {
+	if chain == nil {
+		fmt.Println("Blockchain not initialized. Please start the node first.")
+		return
+	}
+
 	if cmd.NArg() < 1 {
 		fmt.Println("Please provide block height")
 		os.Exit(1)
 	}
-	height := cmd.Arg(0)
-	fmt.Printf("Showing block info for height: %s\n", height)
+
+	height, err := strconv.ParseUint(cmd.Arg(0), 10, 64)
+	if err != nil {
+		fmt.Printf("Invalid height: %v\n", err)
+		return
+	}
+
+	block, err := chain.GetBlock(height)
+	if err != nil {
+		fmt.Printf("Failed to get block: %v\n", err)
+		return
+	}
+
+	fmt.Printf("Block Height: %d\n", block.Height)
+	fmt.Printf("Block Hash: %x\n", block.Hash)
+	fmt.Printf("Previous Block Hash: %x\n", block.Header.PrevBlockHash)
+	fmt.Printf("Timestamp: %v\n", block.Header.Timestamp)
+	fmt.Printf("Difficulty: %d\n", block.Header.Difficulty)
+	fmt.Printf("Nonce: %d\n", block.Header.Nonce)
+	fmt.Printf("Number of Transactions: %d\n", len(block.Transactions))
 }

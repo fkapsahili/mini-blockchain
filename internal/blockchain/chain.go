@@ -49,17 +49,20 @@ func (c *Chain) AddBlock(block *types.Block) error {
 	defer c.mu.Unlock()
 
 	if err := c.ValidateBlock(block); err != nil {
-		return err
+		return fmt.Errorf("block validation failed: %w", err)
 	}
+
+	block.UpdateHash()
 
 	// Save
 	if err := c.store.SaveBlock(block); err != nil {
-		return err
+		return fmt.Errorf("failed to save block: %w", err)
 	}
 
 	// Update the chain state
 	c.currentHeight = block.Height
 	c.latestHash = block.Hash
+
 	return nil
 }
 
@@ -90,28 +93,42 @@ func (c *Chain) ValidateBlock(block *types.Block) error {
 			return errors.New("first block must be genesis with height 0")
 		}
 		return nil
+	} else {
+
+		prevBlock, err := c.store.GetBlock(c.currentHeight)
+		if err != nil {
+			return fmt.Errorf("failed to get previous block: %w", err)
+		}
+
+		// Check height
+		if block.Height != prevBlock.Height+1 {
+			return errors.New("invalid block height")
+		}
+
+		// Check previous hash
+		if block.Header.PrevBlockHash != prevBlock.Hash {
+			return errors.New("invalid previous block hash")
+
+		}
 	}
 
-	prevBlock, err := c.store.GetBlock(c.currentHeight)
-	if err != nil {
-		return fmt.Errorf("failed to get previous block: %w", err)
+	// Verify Merkle root
+	expectedRoot := block.ComputeMerkleRoot()
+	if block.Header.MerkleRoot != expectedRoot {
+		return errors.New("invalid merke root")
 	}
 
-	// Check height
-	if block.Height != prevBlock.Height+1 {
-		return errors.New("invalid block height")
+	// Verify block hash
+	expectedHash := block.ComputeHash()
+	if block.Hash != expectedHash {
+		return errors.New("invalid block hash")
 	}
 
-	// Check previous hash
-	if block.Header.PrevBlockHash != prevBlock.Hash {
-		return errors.New("invalid previous block hash")
-
+	// Check proof of work
+	// We check if the first byte of the hash is less than the difficulty
+	if block.Hash[0] > byte(block.Header.Difficulty) {
+		return errors.New("block hash doesn't meet difficulty requirements")
 	}
-
-	// Additional TODO's:
-	// - Verify proof of work
-	// - Check timestamp is reasonable
-	// - Validate transactions
 
 	return nil
 }
@@ -149,8 +166,7 @@ func (c *Chain) CreateGenesisBlock() *types.Block {
 		Height:       0,
 	}
 
-	// TODO: Calculate the hash for this block
-
+	genesisBlock.UpdateHash()
 	return genesisBlock
 }
 
